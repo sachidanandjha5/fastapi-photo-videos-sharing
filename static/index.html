@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseShare - Photo & Video Social Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- Top Navigation -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="logo-badge">⚡</div>
+        <div>
+          <h1 class="brand-title">PulseShare</h1>
+          <p class="brand-sub">Share moments, photos & videos</p>
+        </div>
+      </div>
+
+      <!-- Auth State Actions -->
+      <div class="nav-actions">
+        <!-- Logged Out State -->
+        <div id="nav-guest" class="nav-guest">
+          <button id="nav-login-btn" class="btn btn-outline-sm">Sign In</button>
+          <button id="nav-signup-btn" class="btn btn-primary-sm">Get Started</button>
+        </div>
+
+        <!-- Logged In State -->
+        <div id="nav-user" class="nav-user hidden">
+          <div class="user-pill">
+            <div class="avatar-circle" id="user-avatar">U</div>
+            <span id="user-email-display" class="user-email">user@example.com</span>
+          </div>
+          <button id="logout-btn" class="btn btn-outline-sm btn-logout" title="Sign Out">Sign Out</button>
+        </div>
+
+        <a href="/docs" target="_blank" class="docs-link" title="Open API Documentation">API Docs &rarr;</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-wrapper">
+    <!-- Left Column: Upload / Create Studio -->
+    <aside class="sidebar-col">
+      <!-- Upload Card (Visible when Logged In) -->
+      <div id="upload-panel" class="card upload-card hidden">
+        <div class="card-header">
+          <div class="header-icon">✨</div>
+          <div>
+            <h2>Share Media</h2>
+            <p class="subtitle">Upload photos or videos with caption</p>
+          </div>
+        </div>
+
+        <form id="upload-form" class="upload-form">
+          <!-- Dropzone -->
+          <div class="form-group">
+            <label class="form-label">Photo or Video</label>
+            <div id="dropzone" class="dropzone">
+              <input type="file" id="file-input" name="file" accept="image/*,video/*" required />
+              
+              <div id="dropzone-idle" class="dropzone-idle">
+                <div class="upload-cloud-icon">☁️</div>
+                <p class="dropzone-text"><strong>Choose file</strong> or drag & drop here</p>
+                <p class="dropzone-sub">Photos (JPG, PNG, GIF) or Videos (MP4, WebM, MOV)</p>
+              </div>
+
+              <!-- Media Preview -->
+              <div id="preview-box" class="preview-box hidden">
+                <div id="preview-media-container" class="preview-media-container"></div>
+                <div class="preview-details">
+                  <span id="preview-filename" class="preview-filename">filename.png</span>
+                  <span id="preview-filesize" class="preview-filesize">0 MB</span>
+                </div>
+                <button type="button" id="clear-file-btn" class="btn-clear-file" title="Remove selected file">&times;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Caption Input -->
+          <div class="form-group">
+            <label for="post-caption" class="form-label">Caption</label>
+            <textarea 
+              id="post-caption" 
+              name="caption" 
+              rows="3" 
+              placeholder="Write a caption for your post..."
+            ></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" id="submit-post-btn" class="btn btn-primary btn-block">
+            <span id="upload-spinner" class="spinner hidden"></span>
+            <span id="upload-btn-text">Share to Feed</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Guest Prompt Card (Visible when Logged Out) -->
+      <div id="guest-panel" class="card guest-card">
+        <div class="guest-banner-icon">🔐</div>
+        <h2>Join PulseShare</h2>
+        <p class="guest-desc">Sign in or create a free account to upload photos & videos, curate your feed, and interact with posts.</p>
+        <div class="guest-actions">
+          <button id="guest-login-btn" class="btn btn-primary btn-block">Sign In to Your Account</button>
+          <button id="guest-signup-btn" class="btn btn-secondary btn-block">Create New Account</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Column: Live Feed -->
+    <section class="feed-col">
+      <!-- Feed Header -->
+      <div class="feed-header-bar">
+        <div class="feed-title-wrap">
+          <h2>Community Feed</h2>
+          <span id="posts-counter" class="pill-counter">0 posts</span>
+        </div>
+
+        <div class="feed-actions">
+          <!-- Feed Filters (Logged In only) -->
+          <div id="feed-filter-tabs" class="feed-tabs hidden">
+            <button class="tab-btn active" data-filter="all">All Posts</button>
+            <button class="tab-btn" data-filter="mine">My Posts</button>
+          </div>
+
+          <button id="refresh-feed-btn" class="btn btn-secondary-sm" title="Refresh Feed">
+            <span class="refresh-icon">🔄</span> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Feed Cards Container -->
+      <div id="feed-cards" class="feed-cards">
+        <!-- Rendered dynamically via JavaScript -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-feed" class="empty-feed hidden">
+        <div class="empty-art">🎬</div>
+        <h3>No posts yet</h3>
+        <p>Sign in and share the very first photo or video!</p>
+      </div>
+
+      <!-- Loading State -->
+      <div id="feed-loader" class="feed-loader">
+        <div class="loader-spinner"></div>
+        <p>Loading community media...</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Auth Modal Dialog -->
+  <div id="auth-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <button id="modal-close-btn" class="modal-close" title="Close">&times;</button>
+      
+      <!-- Modal Tabs -->
+      <div class="modal-tabs">
+        <button id="tab-login" class="modal-tab-btn active">Sign In</button>
+        <button id="tab-signup" class="modal-tab-btn">Create Account</button>
+      </div>
+
+      <!-- Auth Form -->
+      <form id="auth-form" class="modal-form">
+        <div class="form-group">
+          <label for="auth-email" class="form-label">Email Address</label>
+          <input 
+            type="email" 
+            id="auth-email" 
+            placeholder="you@example.com" 
+            required 
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="auth-password" class="form-label">Password</label>
+          <input 
+            type="password" 
+            id="auth-password" 
+            placeholder="••••••••" 
+            required 
+            autocomplete="current-password"
+            minlength="6"
+          />
+          <span id="auth-hint" class="form-hint">At least 6 characters</span>
+        </div>
+
+        <div id="auth-error" class="auth-error-banner hidden"></div>
+
+        <button type="submit" id="auth-submit-btn" class="btn btn-primary btn-block">
+          <span id="auth-spinner" class="spinner hidden"></span>
+          <span id="auth-btn-text">Sign In</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast" class="toast hidden">
+    <span id="toast-icon">✓</span>
+    <span id="toast-message">Notification message</span>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
