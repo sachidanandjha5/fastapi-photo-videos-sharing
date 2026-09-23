@@ -195,13 +195,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const googlePickerClose = document.getElementById('google-picker-close');
   const googleManualForm = document.getElementById('google-manual-form');
   const googleManualEmail = document.getElementById('google-manual-email');
-  const googleAccountBtns = document.querySelectorAll('.google-account-btn');
+  const googleRememberedSection = document.getElementById('google-remembered-section');
+  const googleRememberedBtn = document.getElementById('google-remembered-btn');
+  const googleRememberedEmail = document.getElementById('google-remembered-email');
+  const googleRememberedAvatar = document.getElementById('google-remembered-avatar');
+
+  function openGooglePicker() {
+    closeAuthModal();
+    if (!googlePickerModal) return;
+
+    // Check if this specific device has a remembered account
+    const savedEmail = localStorage.getItem('last_google_email');
+    if (savedEmail && googleRememberedSection && googleRememberedEmail && googleRememberedAvatar) {
+      googleRememberedEmail.textContent = savedEmail;
+      googleRememberedAvatar.textContent = (savedEmail[0] || 'U').toUpperCase();
+      googleRememberedSection.classList.remove('hidden');
+    } else if (googleRememberedSection) {
+      googleRememberedSection.classList.add('hidden');
+    }
+
+    if (googleManualEmail) googleManualEmail.value = '';
+    googlePickerModal.classList.remove('hidden');
+    if (googleManualEmail) googleManualEmail.focus();
+  }
 
   if (googleDirectBtn) {
-    googleDirectBtn.addEventListener('click', () => {
-      closeAuthModal();
-      if (googlePickerModal) googlePickerModal.classList.remove('hidden');
-    });
+    googleDirectBtn.addEventListener('click', openGooglePicker);
   }
 
   if (googlePickerClose) {
@@ -216,12 +235,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  googleAccountBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const email = btn.getAttribute('data-email');
-      if (email) directGoogleLogin(email);
+  if (googleRememberedBtn) {
+    googleRememberedBtn.addEventListener('click', () => {
+      const savedEmail = localStorage.getItem('last_google_email');
+      if (savedEmail) directGoogleLogin(savedEmail);
     });
-  });
+  }
 
   if (googleManualForm) {
     googleManualForm.addEventListener('submit', (e) => {
@@ -248,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const tokenData = await res.json();
       token = tokenData.access_token;
       localStorage.setItem('token', token);
+      localStorage.setItem('last_google_email', email);
 
       const userRes = await fetch('/users/me', { headers: getAuthHeaders() });
       if (userRes.ok) {

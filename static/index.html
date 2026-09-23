@@ -242,30 +242,33 @@
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">to continue directly to PulseShare</p>
       </div>
 
-      <div class="google-account-list" style="margin-top:1.25rem;display:flex;flex-direction:column;gap:0.6rem;">
-        <button type="button" class="google-account-btn" data-email="sonujha6399@gmail.com" data-name="Sachidanand Jha">
-          <div class="google-avatar-circle" style="background:#4285f4;color:white;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">S</div>
+      <!-- Remembered Device Account (Only shown if this specific device previously logged in!) -->
+      <div id="google-remembered-section" class="hidden" style="margin-top:1.25rem;">
+        <button type="button" id="google-remembered-btn" class="google-account-btn">
+          <div id="google-remembered-avatar" class="google-avatar-circle" style="background:#4285f4;color:white;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">U</div>
           <div style="text-align:left;flex:1;overflow:hidden;">
-            <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">Sachidanand Jha</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);text-overflow:ellipsis;overflow:hidden;">sonujha6399@gmail.com</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);">Continue with previous account</div>
+            <div id="google-remembered-email" style="font-weight:600;font-size:0.9rem;color:var(--text-primary);text-overflow:ellipsis;overflow:hidden;">user@gmail.com</div>
           </div>
           <span style="font-size:0.85rem;color:var(--accent-primary);font-weight:600;">Sign in &rarr;</span>
         </button>
+        <div class="auth-divider" style="margin:1rem 0;"><span>or use another account</span></div>
       </div>
 
-      <div class="auth-divider" style="margin:1rem 0;">
-        <span>or enter any google email</span>
-      </div>
-
-      <form id="google-manual-form" style="display:flex;gap:0.5rem;">
-        <input 
-          type="email" 
-          id="google-manual-email" 
-          placeholder="yourname@gmail.com" 
-          required 
-          style="flex:1;font-size:0.85rem;padding:0.6rem 0.85rem;"
-        />
-        <button type="submit" class="btn btn-primary" style="padding:0.6rem 1rem;font-size:0.85rem;white-space:nowrap;">Sign In</button>
+      <form id="google-manual-form" style="margin-top:1rem;text-align:left;">
+        <div class="form-group">
+          <label for="google-manual-email" class="form-label" style="font-size:0.82rem;">Your Google Email Address</label>
+          <input 
+            type="email" 
+            id="google-manual-email" 
+            placeholder="you@gmail.com" 
+            required 
+            style="font-size:0.9rem;padding:0.75rem 1rem;width:100%;"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:0.75rem;">
+          Continue with Google
+        </button>
       </form>
     </div>
   </div>
