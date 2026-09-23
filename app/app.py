@@ -180,7 +180,14 @@ async def upload_file(
     try:
         file_bytes = await file.read()
         content_type = file.content_type or ""
-        file_type = "video" if content_type.startswith("video/") else "image"
+        if content_type.startswith("video/"):
+            file_type = "video"
+        elif content_type.startswith("image/"):
+            file_type = "image"
+        elif content_type.startswith("audio/"):
+            file_type = "audio"
+        else:
+            file_type = "document"
 
         upload_result = await imagekit.files.upload(
             file=file_bytes,

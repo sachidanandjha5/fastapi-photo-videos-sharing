@@ -519,12 +519,70 @@ document.addEventListener('DOMContentLoaded', () => {
       video.autoplay = false;
       video.src = URL.createObjectURL(file);
       previewMediaContainer.appendChild(video);
+    } else if (file.type.startsWith('audio/')) {
+      previewMediaContainer.innerHTML = '<span style="font-size:2.5rem;">🎵</span>';
     } else {
-      previewMediaContainer.innerHTML = '<span style="font-size:1.8rem;">📁</span>';
+      previewMediaContainer.innerHTML = '<span style="font-size:2.5rem;">📄</span>';
     }
 
     dropzoneIdle.classList.add('hidden');
     previewBox.classList.remove('hidden');
+  }
+
+  function compressImageIfLarge(file) {
+    return new Promise((resolve) => {
+      // Only compress images larger than 1.8 MB
+      if (!file.type.startsWith('image/') || file.size <= 1.8 * 1024 * 1024) {
+        resolve(file);
+        return;
+      }
+
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.onload = () => {
+          const maxDim = 1920;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob && blob.size < file.size) {
+                const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                resolve(compressedFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            0.82
+          );
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
   }
 
   function clearSelectedFile() {
@@ -540,7 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
 
     if (!selectedFile) {
-      showToast('Please select a photo or video to upload.', 'error');
+      showToast('Please select a file to upload.', 'error');
       return;
     }
 
@@ -549,16 +607,28 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const caption = document.getElementById('post-caption').value.trim();
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('caption', caption);
-
     submitPostBtn.disabled = true;
     uploadSpinner.classList.remove('hidden');
-    uploadBtnText.textContent = 'Uploading media...';
+    uploadBtnText.textContent = 'Preparing upload...';
 
     try {
+      let fileToUpload = selectedFile;
+      if (selectedFile.type.startsWith('image/')) {
+        uploadBtnText.textContent = 'Optimizing image...';
+        fileToUpload = await compressImageIfLarge(selectedFile);
+      }
+
+      if (fileToUpload.size > 4.5 * 1024 * 1024) {
+        throw new Error('File exceeds the 4.5 MB serverless limit. Please choose a smaller file.');
+      }
+
+      const caption = document.getElementById('post-caption').value.trim();
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+      formData.append('caption', caption);
+
+      uploadBtnText.textContent = 'Uploading to cloud...';
+
       const res = await fetch('/upload', {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -683,6 +753,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const authorInitial = (post.email ? post.email[0] : 'U').toUpperCase();
       const timeAgo = formatTimeAgo(post.created_at);
       const isVideo = post.file_type === 'video';
+      const isAudio = post.file_type === 'audio';
+      const isDocument = post.file_type === 'document';
+
+      let mediaHtml = '';
+      let badgeLabel = '📷 Photo';
+
+      if (isVideo) {
+        badgeLabel = '🎬 Video';
+        mediaHtml = `<video class="feed-video" controls playsinline preload="metadata" src="${escapeHtml(post.url)}"></video>`;
+      } else if (isAudio) {
+        badgeLabel = '🎵 Audio';
+        mediaHtml = `
+          <div class="audio-post-box" style="padding:2.5rem 1.5rem;text-align:center;background:rgba(255,255,255,0.03);">
+            <div style="font-size:2.5rem;margin-bottom:0.75rem;">🎵</div>
+            <audio controls style="width:100%;max-width:320px;" src="${escapeHtml(post.url)}"></audio>
+          </div>
+        `;
+      } else if (isDocument) {
+        badgeLabel = '📄 Document';
+        mediaHtml = `
+          <div class="doc-post-box" style="padding:2.5rem 1.5rem;text-align:center;background:rgba(255,255,255,0.03);">
+            <div style="font-size:3rem;margin-bottom:0.6rem;">📄</div>
+            <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);margin-bottom:0.85rem;word-break:break-all;">
+              ${escapeHtml(post.file_name || 'Document File')}
+            </div>
+            <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="display:inline-flex;padding:0.45rem 1.15rem;font-size:0.85rem;border-radius:2rem;">
+              📥 View / Download
+            </a>
+          </div>
+        `;
+      } else {
+        badgeLabel = '📷 Photo';
+        mediaHtml = `<img class="feed-img" loading="lazy" src="${escapeHtml(post.url)}" alt="${escapeHtml(post.caption || 'Photo')}" onerror="this.onerror=null;this.src='https://via.placeholder.com/800x600/131b2e/64748b?text=Media+Preview';" />`;
+      }
 
       card.innerHTML = `
         <header class="post-header">
@@ -704,21 +808,17 @@ document.addEventListener('DOMContentLoaded', () => {
         </header>
 
         <div class="post-media-wrap">
-          ${
-            isVideo
-              ? `<video class="feed-video" controls playsinline preload="metadata" src="${escapeHtml(post.url)}"></video>`
-              : `<img class="feed-img" loading="lazy" src="${escapeHtml(post.url)}" alt="${escapeHtml(post.caption || 'Photo')}" onerror="this.onerror=null;this.src='https://via.placeholder.com/800x600/131b2e/64748b?text=Media+Preview';" />`
-          }
+          ${mediaHtml}
         </div>
 
         <div class="post-content-box">
           ${post.caption ? `<p class="post-caption">${escapeHtml(post.caption)}</p>` : ''}
           <div class="post-meta-footer">
             <span class="media-badge">
-              ${isVideo ? '🎬 Video' : '📷 Photo'} &bull; ${escapeHtml(truncateString(post.file_name, 22))}
+              ${badgeLabel} &bull; ${escapeHtml(truncateString(post.file_name, 22))}
             </span>
             <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="ik-cdn-link">
-              View Media &rarr;
+              View File &rarr;
             </a>
           </div>
         </div>

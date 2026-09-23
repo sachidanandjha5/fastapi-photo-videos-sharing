@@ -86,24 +86,23 @@ class ServerlessJWTStrategy(JWTStrategy):
             parsed_id = user_manager.parse_id(user_id)
             return await user_manager.get(parsed_id)
         except exceptions.UserNotExists:
-            if email:
-                try:
-                    async with async_session_maker() as session:
-                        restored_user = User(
-                            id=parsed_id,
-                            email=email,
-                            hashed_password="oauth_hashed_placeholder",
-                            is_active=True,
-                            is_superuser=False,
-                            is_verified=True,
-                        )
-                        session.add(restored_user)
-                        await session.commit()
-                    return await user_manager.get(parsed_id)
-                except Exception as e:
-                    print("Error auto-restoring serverless user:", e)
-                    return None
-            return None
+            fallback_email = email or f"user_{str(parsed_id)[:8]}@pulseshare.com"
+            try:
+                async with async_session_maker() as session:
+                    restored_user = User(
+                        id=parsed_id,
+                        email=fallback_email,
+                        hashed_password="oauth_hashed_placeholder",
+                        is_active=True,
+                        is_superuser=False,
+                        is_verified=True,
+                    )
+                    session.add(restored_user)
+                    await session.commit()
+                return await user_manager.get(parsed_id)
+            except Exception as e:
+                print("Error auto-restoring serverless user:", e)
+                return None
         except exceptions.InvalidID:
             return None
 
