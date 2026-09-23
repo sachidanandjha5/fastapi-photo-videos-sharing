@@ -17,7 +17,8 @@ from app.db import User, get_user_db
 
 load_dotenv()
 
-SECRET = os.getenv("JWT_SECRET", "supersecretjwtkey1234567890abcdef")
+_raw_secret = (os.getenv("JWT_SECRET") or "").strip()
+SECRET = _raw_secret if _raw_secret else "supersecretjwtkey1234567890abcdef"
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):

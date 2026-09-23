@@ -58,36 +58,9 @@ app.include_router(fastapi_users.get_verify_router(UserRead), prefix="/auth", ta
 app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
 
 
-@app.get("/debug-info")
-async def debug_info():
-    info = {}
-    try:
-        import jwt
-        info["jwt_version"] = jwt.__version__
-        token = jwt.encode({"test": 123}, "secret", algorithm="HS256")
-        info["jwt_encode_test"] = token[:10] + "..."
-    except Exception as e:
-        info["jwt_error"] = str(e)
-
-    try:
-        from app.users import get_jwt_strategy
-        s = get_jwt_strategy()
-        info["jwt_strategy"] = str(s)
-    except Exception as e:
-        info["strategy_error"] = str(e)
-
-    try:
-        from app.db import async_session_maker, User
-        from sqlalchemy import select
-        async with async_session_maker() as session:
-            r = await session.execute(select(User).limit(5))
-            users = r.scalars().all()
-            info["user_count"] = len(users)
-            info["users"] = [u.email for u in users]
-    except Exception as e:
-        info["db_error"] = str(e)
-
-    return info
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 
 class DirectGoogleAuthRequest(BaseModel):
