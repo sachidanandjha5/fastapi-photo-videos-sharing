@@ -151,6 +151,16 @@ document.addEventListener('DOMContentLoaded', () => {
     authModal.classList.add('hidden');
   }
 
+  const modalSwitchLink = document.getElementById('modal-switch-link');
+  const modalSwitchPrompt = document.getElementById('modal-switch-prompt');
+
+  if (modalSwitchLink) {
+    modalSwitchLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      setAuthMode(authMode === 'login' ? 'signup' : 'login');
+    });
+  }
+
   function setAuthMode(mode) {
     authMode = mode;
     authError.classList.add('hidden');
@@ -160,11 +170,15 @@ document.addEventListener('DOMContentLoaded', () => {
       tabSignup.classList.remove('active');
       authBtnText.textContent = 'Sign In';
       authHint.textContent = 'Enter your email & password to sign in';
+      if (modalSwitchPrompt) modalSwitchPrompt.textContent = "Don't have an account?";
+      if (modalSwitchLink) modalSwitchLink.textContent = "Create Account";
     } else {
       tabSignup.classList.add('active');
       tabLogin.classList.remove('active');
       authBtnText.textContent = 'Create Account';
       authHint.textContent = 'Password must be at least 6 characters';
+      if (modalSwitchPrompt) modalSwitchPrompt.textContent = "Already have an account?";
+      if (modalSwitchLink) modalSwitchLink.textContent = "Sign In";
     }
   }
 
@@ -190,7 +204,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!regRes.ok) {
           const errData = await regRes.json().catch(() => ({}));
-          throw new Error(errData.detail || 'Registration failed');
+          let msg = errData.detail || 'Registration failed';
+          if (msg === 'REGISTER_USER_ALREADY_EXISTS') {
+            msg = 'This email is already registered! Please click "Sign In" above to log into your account.';
+          } else if (msg === 'REGISTER_INVALID_PASSWORD') {
+            msg = 'Password must be at least 6 characters.';
+          }
+          throw new Error(msg);
         }
 
         showToast('Account created successfully! Signing in...', 'success');
@@ -209,7 +229,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!loginRes.ok) {
         const errData = await loginRes.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Invalid email or password');
+        let msg = errData.detail || 'Invalid email or password';
+        if (msg === 'LOGIN_BAD_CREDENTIALS') {
+          msg = 'Incorrect email or password. If you haven\'t created an account yet, click "Create Account" above!';
+        }
+        throw new Error(msg);
       }
 
       const tokenData = await loginRes.json();
