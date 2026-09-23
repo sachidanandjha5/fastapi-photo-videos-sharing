@@ -49,9 +49,43 @@ app.include_router(fastapi_users.get_verify_router(UserRead), prefix="/auth", ta
 app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
 
 
+class DirectGoogleAuthRequest(BaseModel):
+    email: str
+
+
 @app.get("/auth/google/client-id")
 async def get_google_client_id():
     return {"client_id": os.getenv("GOOGLE_CLIENT_ID", "")}
+
+
+@app.post("/auth/google/direct")
+async def auth_google_direct(
+    payload: DirectGoogleAuthRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
+
+    # Find existing user or automatically create new user
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if not user:
+        random_password = secrets.token_urlsafe(32)
+        user_create = UserCreate(email=email, password=random_password)
+        user = await user_manager.create(user_create)
+
+    # Issue JWT token
+    jwt_strategy = get_jwt_strategy()
+    token = await jwt_strategy.write_token(user)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": user.email,
+    }
 
 
 @app.post("/auth/google")

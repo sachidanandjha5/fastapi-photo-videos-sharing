@@ -189,6 +189,83 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // --- Direct Google Sign-In & Account Picker ---
+  const googleDirectBtn = document.getElementById('google-direct-btn');
+  const googlePickerModal = document.getElementById('google-picker-modal');
+  const googlePickerClose = document.getElementById('google-picker-close');
+  const googleManualForm = document.getElementById('google-manual-form');
+  const googleManualEmail = document.getElementById('google-manual-email');
+  const googleAccountBtns = document.querySelectorAll('.google-account-btn');
+
+  if (googleDirectBtn) {
+    googleDirectBtn.addEventListener('click', () => {
+      closeAuthModal();
+      if (googlePickerModal) googlePickerModal.classList.remove('hidden');
+    });
+  }
+
+  if (googlePickerClose) {
+    googlePickerClose.addEventListener('click', () => {
+      if (googlePickerModal) googlePickerModal.classList.add('hidden');
+    });
+  }
+
+  if (googlePickerModal) {
+    googlePickerModal.addEventListener('click', (e) => {
+      if (e.target === googlePickerModal) googlePickerModal.classList.add('hidden');
+    });
+  }
+
+  googleAccountBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const email = btn.getAttribute('data-email');
+      if (email) directGoogleLogin(email);
+    });
+  });
+
+  if (googleManualForm) {
+    googleManualForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = googleManualEmail.value.trim();
+      if (email) directGoogleLogin(email);
+    });
+  }
+
+  async function directGoogleLogin(email) {
+    try {
+      showToast('Signing in with Google account...', 'success');
+      const res = await fetch('/auth/google/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Google sign-in failed');
+      }
+
+      const tokenData = await res.json();
+      token = tokenData.access_token;
+      localStorage.setItem('token', token);
+
+      const userRes = await fetch('/users/me', { headers: getAuthHeaders() });
+      if (userRes.ok) {
+        user = await userRes.json();
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
+      if (googlePickerModal) googlePickerModal.classList.add('hidden');
+      closeAuthModal();
+      updateAuthUI();
+      showToast(`Welcome, ${user ? user.email : email}!`, 'success');
+      loadFeed();
+    } catch (err) {
+      console.error('Direct Google Auth Error:', err);
+      showToast(err.message || 'Google sign-in failed', 'error');
+    }
+  }
+
   function getAuthHeaders() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
