@@ -1,20 +1,35 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import os
 from pathlib import Path
+import secrets
 import uuid
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import Post, User, create_db_and_tables, get_async_session
 from app.images import imagekit
 from app.schemas import UserCreate, UserRead, UserUpdate
-from app.users import auth_backend, current_active_user, fastapi_users
+from app.users import (
+    UserManager,
+    auth_backend,
+    current_active_user,
+    fastapi_users,
+    get_jwt_strategy,
+    get_user_manager,
+)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
 
 
 @asynccontextmanager
@@ -32,6 +47,64 @@ app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), pref
 app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", tags=["auth"])
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix="/auth", tags=["auth"])
 app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
+
+
+@app.get("/auth/google/client-id")
+async def get_google_client_id():
+    return {"client_id": os.getenv("GOOGLE_CLIENT_ID", "")}
+
+
+@app.post("/auth/google")
+async def auth_google(
+    payload: GoogleAuthRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    credential = payload.credential
+    if not credential:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Google credential")
+
+    # Verify ID token with Google's public tokeninfo endpoint
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}")
+            if res.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired Google token",
+                )
+            google_data = res.json()
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not contact Google verification server: {str(e)}",
+        )
+
+    email = google_data.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google account did not provide a verified email",
+        )
+
+    # Find or register user
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if not user:
+        random_password = secrets.token_urlsafe(32)
+        user_create = UserCreate(email=email, password=random_password)
+        user = await user_manager.create(user_create)
+
+    # Issue JWT token
+    jwt_strategy = get_jwt_strategy()
+    token = await jwt_strategy.write_token(user)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": user.email,
+    }
 
 # Mount static frontend assets
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

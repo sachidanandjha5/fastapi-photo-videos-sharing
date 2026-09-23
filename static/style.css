@@ -899,3 +899,55 @@ textarea {
 .hidden {
   display: none !important;
 }
+
+/* Google Auth Section */
+.google-auth-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0.25rem;
+  width: 100%;
+}
+
+.google-btn-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.15rem 0 1rem;
+  width: 100%;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-divider span {
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.google-notice {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background-color: rgba(99, 102, 241, 0.08);
+  border: 1px dashed var(--border);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  margin-top: 0.5rem;
+  text-align: center;
+  line-height: 1.4;
+}

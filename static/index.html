@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <!-- Top Navigation -->
@@ -164,6 +165,16 @@
       <div class="modal-tabs">
         <button id="tab-login" class="modal-tab-btn active">Sign In</button>
         <button id="tab-signup" class="modal-tab-btn">Create Account</button>
+      </div>
+
+      <!-- Google Sign In Container -->
+      <div id="google-auth-section" class="google-auth-section">
+        <div id="google-btn-container" class="google-btn-container"></div>
+        <div id="google-notice" class="google-notice hidden"></div>
+      </div>
+
+      <div class="auth-divider">
+        <span>or with email</span>
       </div>
 
       <!-- Auth Form -->

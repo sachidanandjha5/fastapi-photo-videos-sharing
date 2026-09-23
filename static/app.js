@@ -67,12 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const toastMessage = document.getElementById('toast-message');
   const toastIcon = document.getElementById('toast-icon');
 
+  // Google OAuth State
+  let googleClientId = null;
+
   // Initialize UI & Auth
   init();
 
-  
   async function init() {
     updateAuthUI();
+    initGoogleAuth();
+
     if (token) {
       // Validate session with /users/me
       try {
@@ -92,6 +96,96 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else {
       loadFeed();
+    }
+  }
+
+  async function initGoogleAuth() {
+    try {
+      const res = await fetch('/auth/google/client-id');
+      if (res.ok) {
+        const data = await res.json();
+        googleClientId = data.client_id;
+        renderGoogleButton();
+      }
+    } catch (e) {
+      console.warn('Could not fetch Google Client ID:', e);
+    }
+  }
+
+  function renderGoogleButton() {
+    const container = document.getElementById('google-btn-container');
+    const notice = document.getElementById('google-notice');
+    if (!container) return;
+
+    if (!googleClientId) {
+      if (notice) {
+        notice.textContent = '💡 To enable one-click Google Sign-In, set GOOGLE_CLIENT_ID in your environment variables.';
+        notice.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (notice) notice.classList.add('hidden');
+
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleResponse,
+        });
+
+        window.google.accounts.id.renderButton(container, {
+          theme: 'filled_black',
+          size: 'large',
+          shape: 'pill',
+          width: 320,
+          text: 'continue_with',
+        });
+      } catch (err) {
+        console.error('Google button render error:', err);
+      }
+    } else {
+      setTimeout(renderGoogleButton, 500);
+    }
+  }
+
+  async function handleGoogleResponse(response) {
+    if (!response || !response.credential) {
+      showToast('Google Sign-In failed: no credential received', 'error');
+      return;
+    }
+
+    try {
+      showToast('Signing in with Google...', 'success');
+      const res = await fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Google authentication failed');
+      }
+
+      const tokenData = await res.json();
+      token = tokenData.access_token;
+      localStorage.setItem('token', token);
+
+      // Fetch user profile
+      const userRes = await fetch('/users/me', { headers: getAuthHeaders() });
+      if (userRes.ok) {
+        user = await userRes.json();
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
+      closeAuthModal();
+      updateAuthUI();
+      showToast(`Welcome, ${user ? user.email : 'Google User'}!`, 'success');
+      loadFeed();
+    } catch (err) {
+      console.error('Google Auth Error:', err);
+      showToast(err.message || 'Google Sign-In error', 'error');
     }
   }
 
