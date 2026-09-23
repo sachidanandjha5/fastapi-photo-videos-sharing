@@ -46,7 +46,14 @@ async def create_db_and_tables():
         await conn.run_sync(Base.metadata.create_all)
 
 
+_db_initialized = False
+
+
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    global _db_initialized
+    if not _db_initialized:
+        await create_db_and_tables()
+        _db_initialized = True
     async with async_session_maker() as session:
         yield session
 

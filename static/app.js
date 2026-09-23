@@ -70,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize UI & Auth
   init();
 
+  
   async function init() {
     updateAuthUI();
     if (token) {

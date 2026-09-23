@@ -39,6 +39,13 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 async def index():
+    for candidate in [
+        STATIC_DIR / "index.html",
+        Path("static/index.html"),
+        Path(__file__).resolve().parent.parent / "static" / "index.html",
+    ]:
+        if candidate.exists():
+            return FileResponse(candidate)
     return FileResponse(STATIC_DIR / "index.html")
 
 
