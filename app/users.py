@@ -42,8 +42,74 @@ async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
+from fastapi_users import exceptions
+from fastapi_users.jwt import decode_jwt, generate_jwt
+import jwt
+from app.db import User, async_session_maker, get_user_db
+
+
+class ServerlessJWTStrategy(JWTStrategy):
+    """
+    Enhanced JWTStrategy for Serverless environments (like Vercel).
+    Automatically restores authenticated users across ephemeral serverless containers
+    to prevent foreign key errors and 401 session-expired issues.
+    """
+
+    async def write_token(self, user: User) -> str:
+        data = {
+            "sub": str(user.id),
+            "email": user.email,
+            "aud": self.token_audience,
+        }
+        return generate_jwt(
+            data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm
+        )
+
+    async def read_token(
+        self, token: Optional[str], user_manager: BaseUserManager[User, uuid.UUID]
+    ) -> Optional[User]:
+        if token is None:
+            return None
+
+        try:
+            data = decode_jwt(
+                token, self.decode_key, self.token_audience, algorithms=[self.algorithm]
+            )
+            user_id = data.get("sub")
+            email = data.get("email")
+            if user_id is None:
+                return None
+        except jwt.PyJWTError:
+            return None
+
+        try:
+            parsed_id = user_manager.parse_id(user_id)
+            return await user_manager.get(parsed_id)
+        except exceptions.UserNotExists:
+            if email:
+                try:
+                    async with async_session_maker() as session:
+                        restored_user = User(
+                            id=parsed_id,
+                            email=email,
+                            hashed_password="oauth_hashed_placeholder",
+                            is_active=True,
+                            is_superuser=False,
+                            is_verified=True,
+                        )
+                        session.add(restored_user)
+                        await session.commit()
+                    return await user_manager.get(parsed_id)
+                except Exception as e:
+                    print("Error auto-restoring serverless user:", e)
+                    return None
+            return None
+        except exceptions.InvalidID:
+            return None
+
+
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=SECRET, lifetime_seconds=86400)
+    return ServerlessJWTStrategy(secret=SECRET, lifetime_seconds=86400)
 
 
 auth_backend = AuthenticationBackend(
