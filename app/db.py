@@ -27,11 +27,12 @@ class Post(Base):
     __tablename__ = "posts"
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False, index=True)
     caption = Column(Text, default="")
     url = Column(String, nullable=False)
-    file_type = Column(String, nullable=False)  # 'image' or 'video'
+    file_type = Column(String, nullable=False)  # 'image', 'video', 'audio', or 'document'
     file_name = Column(String, nullable=False)
+    imagekit_file_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="posts")
@@ -44,6 +45,11 @@ async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE posts ADD COLUMN imagekit_file_id VARCHAR"))
+        except Exception:
+            pass
 
 
 _db_initialized = False

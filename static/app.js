@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
       navUser.classList.remove('hidden');
       guestPanel.classList.add('hidden');
       uploadPanel.classList.remove('hidden');
-      feedFilterTabs.classList.remove('hidden');
+      if (feedFilterTabs) feedFilterTabs.classList.remove('hidden');
 
       userEmailDisplay.textContent = user.email;
       userAvatar.textContent = (user.email[0] || 'U').toUpperCase();
@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
       navGuest.classList.remove('hidden');
       uploadPanel.classList.add('hidden');
       guestPanel.classList.remove('hidden');
-      feedFilterTabs.classList.add('hidden');
+      if (feedFilterTabs) feedFilterTabs.classList.add('hidden');
     }
   }
 
@@ -459,13 +459,20 @@ document.addEventListener('DOMContentLoaded', () => {
     user = null;
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    updateAuthUI();
     cachedPosts = [];
-    renderPosts([]);
+    if (feedCards) feedCards.innerHTML = '';
+    if (postsCounter) postsCounter.textContent = '0 files';
+    updateAuthUI();
+    if (emptyFeed) {
+      emptyFeed.classList.remove('hidden');
+      const h3 = emptyFeed.querySelector('h3');
+      const p = emptyFeed.querySelector('p');
+      if (h3) h3.textContent = 'Sign in to access your files';
+      if (p) p.textContent = 'Sign in with your Google account to view and upload files.';
+    }
     if (showNotification) {
       showToast('You have been signed out.', 'success');
     }
-    loadFeed();
   }
 
   // --- Dropzone & Media Selection ---
@@ -657,11 +664,11 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       submitPostBtn.disabled = false;
       uploadSpinner.classList.add('hidden');
-      uploadBtnText.textContent = 'Share to Feed';
+      uploadBtnText.textContent = 'Upload File';
     }
   });
 
-  // --- Feed Filter & Loading ---
+  // --- Drive Files Loading ---
   refreshFeedBtn.addEventListener('click', () => {
     const icon = refreshFeedBtn.querySelector('.refresh-icon');
     if (icon) icon.style.transform = 'rotate(360deg)';
@@ -669,15 +676,6 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
         if (icon) icon.style.transform = '';
       }, 500);
-    });
-  });
-
-  document.querySelectorAll('#feed-filter-tabs .tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#feed-filter-tabs .tab-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      applyFilterAndRender();
     });
   });
 
@@ -694,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      const res = await fetch('/feed', { headers: getAuthHeaders() });
+      const res = await fetch('/files', { headers: getAuthHeaders() });
       if (!res.ok) {
         if (res.status === 401) {
           handleLogout(false);
@@ -702,27 +700,23 @@ document.addEventListener('DOMContentLoaded', () => {
           renderPosts([]);
           return;
         }
-        throw new Error('Failed to load feed');
+        throw new Error('Failed to load files');
       }
 
       const data = await res.json();
-      cachedPosts = data.posts || [];
+      cachedPosts = data.files || data.posts || [];
       applyFilterAndRender();
     } catch (err) {
       console.error('Feed error:', err);
-      showToast('Could not load feed: ' + err.message, 'error');
+      showToast('Could not load files: ' + err.message, 'error');
     } finally {
       feedLoader.classList.add('hidden');
     }
   }
 
   function applyFilterAndRender() {
-    let filtered = cachedPosts;
-    if (currentFilter === 'mine') {
-      filtered = cachedPosts.filter((p) => p.is_owner);
-    }
-    postsCounter.textContent = `${filtered.length} post${filtered.length === 1 ? '' : 's'}`;
-    renderPosts(filtered);
+    postsCounter.textContent = `${cachedPosts.length} file${cachedPosts.length === 1 ? '' : 's'}`;
+    renderPosts(cachedPosts);
   }
 
   function renderPosts(posts) {
@@ -730,16 +724,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!token) {
       emptyFeed.classList.remove('hidden');
-      emptyFeed.querySelector('h3').textContent = 'Sign in to view the feed';
-      emptyFeed.querySelector('p').textContent = 'Create an account or log in to view and share photos & videos.';
-      postsCounter.textContent = '0 posts';
+      emptyFeed.querySelector('h3').textContent = 'Sign in to access your files';
+      emptyFeed.querySelector('p').textContent = 'Sign in with your Google account to view and upload files.';
+      postsCounter.textContent = '0 files';
       return;
     }
 
     if (posts.length === 0) {
       emptyFeed.classList.remove('hidden');
-      emptyFeed.querySelector('h3').textContent = currentFilter === 'mine' ? 'No posts by you yet' : 'No posts yet';
-      emptyFeed.querySelector('p').textContent = 'Use the upload studio on the left to share your first photo or video!';
+      emptyFeed.querySelector('h3').textContent = 'No files uploaded yet';
+      emptyFeed.querySelector('p').textContent = 'Upload your first photo, video, PDF, or document using the upload panel on the left.';
       return;
     }
 
@@ -801,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${post.is_owner ? '<span class="owner-pill">You</span>' : ''}
             ${
               post.is_owner
-                ? `<button class="btn-delete-post" title="Delete Post" data-id="${escapeHtml(post.id)}">🗑️</button>`
+                ? `<button class="btn-delete-post" title="Delete File" data-id="${escapeHtml(post.id)}">🗑️</button>`
                 : ''
             }
           </div>
@@ -838,22 +832,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Delete Post Action ---
   async function handleDeletePost(postId) {
-    if (!confirm('Are you sure you want to delete this post? This cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this file? This cannot be undone.')) {
       return;
     }
 
     try {
-      const res = await fetch(`/posts/${postId}`, {
+      const res = await fetch(`/files/${postId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Could not delete post');
+        throw new Error(errData.detail || 'Could not delete file');
       }
 
-      showToast('Post deleted successfully', 'success');
+      showToast('File deleted successfully', 'success');
 
       // Remove from cachedPosts & DOM
       cachedPosts = cachedPosts.filter((p) => p.id !== postId);

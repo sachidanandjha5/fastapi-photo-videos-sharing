@@ -53,15 +53,15 @@
         <div class="card-header">
           <div class="header-icon">✨</div>
           <div>
-            <h2>Share Media</h2>
-            <p class="subtitle">Upload photos or videos with caption</p>
+            <h2>Upload File</h2>
+            <p class="subtitle">Photos, Videos, PDFs & Documents</p>
           </div>
         </div>
 
         <form id="upload-form" class="upload-form">
           <!-- Dropzone -->
           <div class="form-group">
-            <label class="form-label">Photo, Video or Document</label>
+            <label class="form-label">Photo, Video, PDF or Document</label>
             <div id="dropzone" class="dropzone">
               <input type="file" id="file-input" name="file" accept="*/*" required />
               
@@ -85,19 +85,19 @@
 
           <!-- Caption Input -->
           <div class="form-group">
-            <label for="post-caption" class="form-label">Caption</label>
+            <label for="post-caption" class="form-label">Notes / Caption (optional)</label>
             <textarea 
               id="post-caption" 
               name="caption" 
               rows="3" 
-              placeholder="Write a caption for your post..."
+              placeholder="Add an optional note or caption..."
             ></textarea>
           </div>
 
           <!-- Submit Button -->
           <button type="submit" id="submit-post-btn" class="btn btn-primary btn-block">
             <span id="upload-spinner" class="spinner hidden"></span>
-            <span id="upload-btn-text">Share to Feed</span>
+            <span id="upload-btn-text">Upload File</span>
           </button>
         </form>
       </div>
@@ -114,44 +114,38 @@
       </div>
     </aside>
 
-    <!-- Right Column: Live Feed -->
+    <!-- Right Column: My Files Drive -->
     <section class="feed-col">
-      <!-- Feed Header -->
+      <!-- Drive Header -->
       <div class="feed-header-bar">
         <div class="feed-title-wrap">
-          <h2>Community Feed</h2>
-          <span id="posts-counter" class="pill-counter">0 posts</span>
+          <h2 id="feed-title">My Files</h2>
+          <span id="posts-counter" class="pill-counter">0 files</span>
         </div>
 
         <div class="feed-actions">
-          <!-- Feed Filters (Logged In only) -->
-          <div id="feed-filter-tabs" class="feed-tabs hidden">
-            <button class="tab-btn active" data-filter="all">All Posts</button>
-            <button class="tab-btn" data-filter="mine">My Posts</button>
-          </div>
-
-          <button id="refresh-feed-btn" class="btn btn-secondary-sm" title="Refresh Feed">
+          <button id="refresh-feed-btn" class="btn btn-secondary-sm" title="Refresh Files">
             <span class="refresh-icon">🔄</span> Refresh
           </button>
         </div>
       </div>
 
-      <!-- Feed Cards Container -->
+      <!-- User Files Container -->
       <div id="feed-cards" class="feed-cards">
         <!-- Rendered dynamically via JavaScript -->
       </div>
 
       <!-- Empty State -->
       <div id="empty-feed" class="empty-feed hidden">
-        <div class="empty-art">🎬</div>
-        <h3>No posts yet</h3>
-        <p>Sign in and share the very first photo or video!</p>
+        <div class="empty-art">📂</div>
+        <h3 id="empty-feed-title">No files uploaded yet</h3>
+        <p id="empty-feed-desc">Upload your first photo, video, PDF, or document using the panel on the left.</p>
       </div>
 
       <!-- Loading State -->
       <div id="feed-loader" class="feed-loader">
         <div class="loader-spinner"></div>
-        <p>Loading community media...</p>
+        <p id="feed-loader-text">Loading your files...</p>
       </div>
     </section>
   </main>

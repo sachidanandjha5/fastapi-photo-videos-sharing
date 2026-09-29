@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import secrets
+from typing import Optional
 import uuid
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -21,6 +22,7 @@ from app.users import (
     auth_backend,
     current_active_user,
     fastapi_users,
+    get_deterministic_user_id,
     get_jwt_strategy,
     get_user_manager,
 )
@@ -82,8 +84,10 @@ async def auth_google_direct(
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
 
-    # Find existing user or automatically create new user
-    result = await session.execute(select(User).where(User.email == email))
+    deterministic_id = get_deterministic_user_id(email)
+    result = await session.execute(
+        select(User).where((User.email == email) | (User.id == deterministic_id))
+    )
     user = result.scalars().first()
 
     if not user:
@@ -99,6 +103,7 @@ async def auth_google_direct(
         "access_token": token,
         "token_type": "bearer",
         "email": user.email,
+        "user_id": str(user.id),
     }
 
 
@@ -128,15 +133,18 @@ async def auth_google(
             detail=f"Could not contact Google verification server: {str(e)}",
         )
 
-    email = google_data.get("email")
+    email = (google_data.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Google account did not provide a verified email",
         )
 
-    # Find or register user
-    result = await session.execute(select(User).where(User.email == email))
+    # Find or register user deterministically
+    deterministic_id = get_deterministic_user_id(email)
+    result = await session.execute(
+        select(User).where((User.email == email) | (User.id == deterministic_id))
+    )
     user = result.scalars().first()
 
     if not user:
@@ -152,6 +160,7 @@ async def auth_google(
         "access_token": token,
         "token_type": "bearer",
         "email": user.email,
+        "user_id": str(user.id),
     }
 
 # Mount static frontend assets
@@ -189,11 +198,13 @@ async def upload_file(
         else:
             file_type = "document"
 
+        user_folder = f"/users/{user.id}/"
         upload_result = await imagekit.files.upload(
             file=file_bytes,
             file_name=file.filename or "upload",
+            folder=user_folder,
+            tags=[f"owner_{user.id}"],
             use_unique_file_name=True,
-            tags=["backend-upload"],
         )
 
         post = Post(
@@ -202,6 +213,7 @@ async def upload_file(
             url=upload_result.url,
             file_type=file_type,
             file_name=upload_result.name or file.filename or "upload",
+            imagekit_file_id=getattr(upload_result, "file_id", None),
             created_at=datetime.now(timezone.utc),
         )
         session.add(post)
@@ -228,60 +240,156 @@ async def upload_file(
         await file.close()
 
 
+@app.get("/files")
 @app.get("/feed")
-async def get_feed(
+async def get_user_files(
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(current_active_user),
 ):
-    result = await session.execute(select(Post).order_by(Post.created_at.desc()))
+    # NEVER LOAD ALL FILES - strictly filter by authenticated user ID
+    result = await session.execute(
+        select(Post).where(Post.user_id == user.id).order_by(Post.created_at.desc())
+    )
     posts = result.scalars().all()
 
-    user_result = await session.execute(select(User))
-    users = user_result.scalars().all()
-    user_dict = {u.id: u.email for u in users}
+    # Ephemeral serverless container self-healing:
+    # If the local database has 0 posts for this user, check ImageKit folder
+    # to automatically restore files uploaded by this user on previous containers
+    if not posts:
+        try:
+            ik_assets = await imagekit.assets.list(path=f"/users/{user.id}/")
+            if ik_assets:
+                new_posts = []
+                for asset in ik_assets:
+                    if getattr(asset, "type", "file") != "file":
+                        continue
+                    mime = getattr(asset, "mime", "") or ""
+                    ft = getattr(asset, "file_type", "") or ""
+                    if "video" in mime or ft == "video":
+                        f_type = "video"
+                    elif "audio" in mime:
+                        f_type = "audio"
+                    elif "image" in mime or ft == "image":
+                        f_type = "image"
+                    else:
+                        f_type = "document"
 
-    posts_data = []
-    for post in posts:
-        posts_data.append(
-            {
-                "id": str(post.id),
-                "user_id": str(post.user_id),
-                "caption": post.caption,
-                "url": post.url,
-                "file_type": post.file_type,
-                "file_name": post.file_name,
-                "created_at": post.created_at.isoformat() if post.created_at else None,
-                "is_owner": post.user_id == user.id,
-                "email": user_dict.get(post.user_id, "Unknown"),
-            }
-        )
+                    p = Post(
+                        user_id=user.id,
+                        caption="",
+                        url=asset.url,
+                        file_type=f_type,
+                        file_name=asset.name,
+                        imagekit_file_id=getattr(asset, "file_id", None),
+                        created_at=getattr(asset, "created_at", None) or datetime.now(timezone.utc),
+                    )
+                    session.add(p)
+                    new_posts.append(p)
+                if new_posts:
+                    await session.commit()
+                    result = await session.execute(
+                        select(Post).where(Post.user_id == user.id).order_by(Post.created_at.desc())
+                    )
+                    posts = result.scalars().all()
+        except Exception as sync_err:
+            pass
 
-    return {"posts": posts_data}
+    posts_data = [
+        {
+            "id": str(post.id),
+            "user_id": str(post.user_id),
+            "caption": post.caption,
+            "url": post.url,
+            "file_type": post.file_type,
+            "file_name": post.file_name,
+            "created_at": post.created_at.isoformat() if post.created_at else None,
+            "is_owner": True,
+            "email": user.email,
+        }
+        for post in posts
+    ]
+
+    return {
+        "posts": posts_data,
+        "files": posts_data,
+        "user": {"id": str(user.id), "email": user.email},
+    }
 
 
-@app.delete("/posts/{post_id}")
-async def delete_post(
-    post_id: str,
+@app.get("/files/{file_id}")
+@app.get("/posts/{post_id}")
+async def get_single_file(
+    file_id: Optional[str] = None,
+    post_id: Optional[str] = None,
     session: AsyncSession = Depends(get_async_session),
     user: User = Depends(current_active_user),
 ):
+    target_id_str = file_id or post_id
     try:
-        post_uuid = uuid.UUID(post_id)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid post ID")
+        target_uuid = uuid.UUID(target_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file ID")
 
-    result = await session.execute(select(Post).where(Post.id == post_uuid))
+    result = await session.execute(select(Post).where(Post.id == target_uuid))
     post = result.scalars().first()
 
     if not post:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
+    # Enforce strict ownership check
     if post.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to delete this post",
+            detail="Access denied: You do not have permission to access this file",
         )
+
+    return {
+        "id": str(post.id),
+        "user_id": str(post.user_id),
+        "caption": post.caption,
+        "url": post.url,
+        "file_type": post.file_type,
+        "file_name": post.file_name,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "is_owner": True,
+        "email": user.email,
+    }
+
+
+@app.delete("/files/{file_id}")
+@app.delete("/posts/{post_id}")
+async def delete_file(
+    file_id: Optional[str] = None,
+    post_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    target_id_str = file_id or post_id
+    try:
+        target_uuid = uuid.UUID(target_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file ID")
+
+    result = await session.execute(select(Post).where(Post.id == target_uuid))
+    post = result.scalars().first()
+
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    # Enforce strict ownership check
+    if post.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: You cannot delete another user's file",
+        )
+
+    # Delete from ImageKit if asset ID is known
+    if post.imagekit_file_id:
+        try:
+            await imagekit.files.delete(file_id=post.imagekit_file_id)
+        except Exception as ik_err:
+            print("ImageKit delete notice:", ik_err)
 
     await session.delete(post)
     await session.commit()
-    return {"success": True, "message": "Post deleted successfully"}
+    return {"success": True, "message": "File deleted successfully"}
