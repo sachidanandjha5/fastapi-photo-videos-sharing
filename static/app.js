@@ -1,4 +1,4 @@
-// PulseShare - Interactive Photo & Video Social Client
+// ShareCare - Secure Cloud Media & File Drive
 
 document.addEventListener('DOMContentLoaded', () => {
   // State

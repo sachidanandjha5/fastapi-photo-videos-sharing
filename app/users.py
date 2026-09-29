@@ -122,7 +122,7 @@ class ServerlessJWTStrategy(JWTStrategy):
             return await user_manager.get(parsed_id)
         except exceptions.UserNotExists:
             effective_id = get_deterministic_user_id(email) if email else parsed_id
-            fallback_email = email or f"user_{str(effective_id)[:8]}@pulseshare.com"
+            fallback_email = email or f"user_{str(effective_id)[:8]}@sharecare.com"
             try:
                 async with async_session_maker() as session:
                     restored_user = User(

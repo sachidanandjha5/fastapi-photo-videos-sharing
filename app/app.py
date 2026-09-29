@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     await imagekit.close()
 
 
-app = FastAPI(title="FastAPI Photo & Video Sharing", lifespan=lifespan)
+app = FastAPI(title="ShareCare", lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
