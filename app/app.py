@@ -179,6 +179,74 @@ async def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+class FileRecordRequest(BaseModel):
+    url: str
+    file_name: str
+    file_type: Optional[str] = "document"
+    imagekit_file_id: Optional[str] = None
+    caption: Optional[str] = ""
+    file_size: Optional[int] = 0
+
+
+@app.get("/upload/auth")
+async def get_upload_auth(user: User = Depends(current_active_user)):
+    """
+    Generates authentication credentials for client-side direct upload to ImageKit.
+    Enables direct streaming of large videos, photos, and documents (up to 100MB+)
+    without hitting Vercel's 4.5MB serverless payload limit.
+    """
+    params = await imagekit.helper.get_authentication_parameters()
+    public_key = (os.getenv("IMAGEKIT_PUBLIC_KEY") or "").strip() or "public_Yki+qCk9Jz8F0I1AKOUXIpGgfMg="
+    return {
+        "token": params.get("token"),
+        "expire": params.get("expire"),
+        "signature": params.get("signature"),
+        "public_key": public_key,
+        "folder": f"/users/{user.id}/",
+        "tags": [f"owner_{user.id}"],
+        "user_id": str(user.id),
+    }
+
+
+@app.post("/files/record", status_code=status.HTTP_201_CREATED)
+async def record_uploaded_file(
+    payload: FileRecordRequest,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """
+    Registers an asset directly uploaded to ImageKit into the user's database.
+    Strictly verifies ownership using current_user.id.
+    """
+    post = Post(
+        user_id=user.id,
+        caption=payload.caption or "",
+        url=payload.url,
+        file_type=payload.file_type or "document",
+        file_name=payload.file_name or "file",
+        file_size=payload.file_size or 0,
+        imagekit_file_id=payload.imagekit_file_id,
+        created_at=datetime.now(timezone.utc),
+    )
+    session.add(post)
+    await session.commit()
+    await session.refresh(post)
+
+    return {
+        "id": str(post.id),
+        "user_id": str(post.user_id),
+        "caption": post.caption,
+        "url": post.url,
+        "file_type": post.file_type,
+        "file_name": post.file_name,
+        "file_size": post.file_size or 0,
+        "imagekit_file_id": post.imagekit_file_id,
+        "created_at": post.created_at.isoformat(),
+        "email": user.email,
+        "is_owner": True,
+    }
+
+
 @app.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(...),
@@ -213,6 +281,7 @@ async def upload_file(
             url=upload_result.url,
             file_type=file_type,
             file_name=upload_result.name or file.filename or "upload",
+            file_size=len(file_bytes),
             imagekit_file_id=getattr(upload_result, "file_id", None),
             created_at=datetime.now(timezone.utc),
         )
@@ -227,6 +296,7 @@ async def upload_file(
             "url": post.url,
             "file_type": post.file_type,
             "file_name": post.file_name,
+            "file_size": post.file_size or len(file_bytes),
             "created_at": post.created_at.isoformat(),
             "email": user.email,
             "is_owner": True,
@@ -280,6 +350,7 @@ async def get_user_files(
                         url=asset.url,
                         file_type=f_type,
                         file_name=asset.name,
+                        file_size=int(getattr(asset, "size", 0) or 0),
                         imagekit_file_id=getattr(asset, "file_id", None),
                         created_at=getattr(asset, "created_at", None) or datetime.now(timezone.utc),
                     )
@@ -302,6 +373,7 @@ async def get_user_files(
             "url": post.url,
             "file_type": post.file_type,
             "file_name": post.file_name,
+            "file_size": post.file_size or 0,
             "created_at": post.created_at.isoformat() if post.created_at else None,
             "is_owner": True,
             "email": user.email,
@@ -309,9 +381,20 @@ async def get_user_files(
         for post in posts
     ]
 
+    total_size = sum((p.get("file_size") or 0) for p in posts_data)
+    stats = {
+        "total_files": len(posts_data),
+        "total_size": total_size,
+        "images": sum(1 for p in posts_data if p["file_type"] == "image"),
+        "videos": sum(1 for p in posts_data if p["file_type"] == "video"),
+        "audios": sum(1 for p in posts_data if p["file_type"] == "audio"),
+        "documents": sum(1 for p in posts_data if p["file_type"] == "document"),
+    }
+
     return {
         "posts": posts_data,
         "files": posts_data,
+        "stats": stats,
         "user": {"id": str(user.id), "email": user.email},
     }
 
@@ -350,6 +433,7 @@ async def get_single_file(
         "url": post.url,
         "file_type": post.file_type,
         "file_name": post.file_name,
+        "file_size": post.file_size or 0,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "is_owner": True,
         "email": user.email,

@@ -5,7 +5,7 @@ import uuid
 
 from fastapi import Depends
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -32,6 +32,7 @@ class Post(Base):
     url = Column(String, nullable=False)
     file_type = Column(String, nullable=False)  # 'image', 'video', 'audio', or 'document'
     file_name = Column(String, nullable=False)
+    file_size = Column(Integer, default=0, nullable=True)
     imagekit_file_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -48,6 +49,11 @@ async def create_db_and_tables():
         try:
             from sqlalchemy import text
             await conn.execute(text("ALTER TABLE posts ADD COLUMN imagekit_file_id VARCHAR"))
+        except Exception:
+            pass
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE posts ADD COLUMN file_size INTEGER DEFAULT 0"))
         except Exception:
             pass
 

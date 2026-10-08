@@ -9,12 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     user = null;
   }
-  let currentFilter = 'all'; // 'all' | 'mine'
   let cachedPosts = [];
+  let cachedStats = null;
   let selectedFile = null;
   let authMode = 'login'; // 'login' | 'signup'
 
-  // DOM Elements
+  // Workspace View & Filter State
+  let viewMode = localStorage.getItem('sharecare_view_mode') || 'grid'; // 'grid' | 'list'
+  let activeCategory = 'all';
+  let searchQuery = '';
+  let sortMode = 'newest';
+
+  // DOM Elements - Nav & Auth
   const navGuest = document.getElementById('nav-guest');
   const navUser = document.getElementById('nav-user');
   const navLoginBtn = document.getElementById('nav-login-btn');
@@ -22,12 +28,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logout-btn');
   const userAvatar = document.getElementById('user-avatar');
   const userEmailDisplay = document.getElementById('user-email-display');
+  const navStoragePill = document.getElementById('nav-storage-pill');
+  const navStorageText = document.getElementById('nav-storage-text');
 
+  // DOM Elements - Panels
   const uploadPanel = document.getElementById('upload-panel');
   const guestPanel = document.getElementById('guest-panel');
   const guestLoginBtn = document.getElementById('guest-login-btn');
   const guestSignupBtn = document.getElementById('guest-signup-btn');
 
+  // DOM Elements - Upload Studio
   const uploadForm = document.getElementById('upload-form');
   const fileInput = document.getElementById('file-input');
   const dropzone = document.getElementById('dropzone');
@@ -41,14 +51,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const uploadSpinner = document.getElementById('upload-spinner');
   const uploadBtnText = document.getElementById('upload-btn-text');
 
+  // DOM Elements - Progress Bar
+  const uploadProgressContainer = document.getElementById('upload-progress-container');
+  const progressStatus = document.getElementById('progress-status');
+  const progressPercent = document.getElementById('progress-percent');
+  const progressBarFill = document.getElementById('progress-bar-fill');
+  const progressBytes = document.getElementById('progress-bytes');
+
+  // DOM Elements - Drive Feed & Toolbar
+  const driveToolbar = document.getElementById('drive-toolbar');
+  const searchInput = document.getElementById('search-input');
+  const searchClearBtn = document.getElementById('search-clear-btn');
+  const catPills = document.querySelectorAll('.cat-pill');
+  const sortSelect = document.getElementById('sort-select');
+  const viewGridBtn = document.getElementById('view-grid-btn');
+  const viewListBtn = document.getElementById('view-list-btn');
+
   const feedCards = document.getElementById('feed-cards');
   const emptyFeed = document.getElementById('empty-feed');
   const feedLoader = document.getElementById('feed-loader');
   const postsCounter = document.getElementById('posts-counter');
   const refreshFeedBtn = document.getElementById('refresh-feed-btn');
-  const feedFilterTabs = document.getElementById('feed-filter-tabs');
 
-  // Modal Elements
+  // DOM Elements - Modals
   const authModal = document.getElementById('auth-modal');
   const modalCloseBtn = document.getElementById('modal-close-btn');
   const tabLogin = document.getElementById('tab-login');
@@ -62,7 +87,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const authBtnText = document.getElementById('auth-btn-text');
   const authError = document.getElementById('auth-error');
 
-  // Toast Elements
+  // DOM Elements - Lightbox Media Viewer
+  const lightboxModal = document.getElementById('lightbox-modal');
+  const lightboxCloseBtn = document.getElementById('lightbox-close-btn');
+  const lightboxContent = document.getElementById('lightbox-content');
+  const lightboxTitle = document.getElementById('lightbox-title');
+  const lightboxSub = document.getElementById('lightbox-sub');
+  const lightboxDownloadLink = document.getElementById('lightbox-download-link');
+
+  // DOM Elements - Toast
   const toast = document.getElementById('toast');
   const toastMessage = document.getElementById('toast-message');
   const toastIcon = document.getElementById('toast-icon');
@@ -76,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function init() {
     updateAuthUI();
     initGoogleAuth();
+    applyViewMode(viewMode);
 
     if (token) {
       // Validate session with /users/me
@@ -114,18 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderGoogleButton() {
     const container = document.getElementById('google-btn-container');
-    const notice = document.getElementById('google-notice');
-    if (!container) return;
-
-    if (!googleClientId) {
-      if (notice) {
-        notice.textContent = '💡 To enable one-click Google Sign-In, set GOOGLE_CLIENT_ID in your environment variables.';
-        notice.classList.remove('hidden');
-      }
-      return;
-    }
-
-    if (notice) notice.classList.add('hidden');
+    if (!container || !googleClientId) return;
 
     if (window.google && window.google.accounts && window.google.accounts.id) {
       try {
@@ -172,7 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
       token = tokenData.access_token;
       localStorage.setItem('token', token);
 
-      // Fetch user profile
       const userRes = await fetch('/users/me', { headers: getAuthHeaders() });
       if (userRes.ok) {
         user = await userRes.json();
@@ -181,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       closeAuthModal();
       updateAuthUI();
-      showToast(`Welcome, ${user ? user.email : 'Google User'}!`, 'success');
+      showToast(`Welcome to ShareCare, ${user ? user.email : 'User'}!`, 'success');
       loadFeed();
     } catch (err) {
       console.error('Google Auth Error:', err);
@@ -204,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
     closeAuthModal();
     if (!googlePickerModal) return;
 
-    // Check if this specific device has a remembered account
     const savedEmail = localStorage.getItem('last_google_email');
     if (savedEmail && googleRememberedSection && googleRememberedEmail && googleRememberedAvatar) {
       googleRememberedEmail.textContent = savedEmail;
@@ -278,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (googlePickerModal) googlePickerModal.classList.add('hidden');
       closeAuthModal();
       updateAuthUI();
-      showToast(`Welcome, ${user ? user.email : email}!`, 'success');
+      showToast(`Welcome to ShareCare, ${user ? user.email : email}!`, 'success');
       loadFeed();
     } catch (err) {
       console.error('Direct Google Auth Error:', err);
@@ -296,16 +317,20 @@ document.addEventListener('DOMContentLoaded', () => {
       navUser.classList.remove('hidden');
       guestPanel.classList.add('hidden');
       uploadPanel.classList.remove('hidden');
-      if (feedFilterTabs) feedFilterTabs.classList.remove('hidden');
+      if (driveToolbar) driveToolbar.classList.remove('hidden');
 
       userEmailDisplay.textContent = user.email;
       userAvatar.textContent = (user.email[0] || 'U').toUpperCase();
+
+      if (cachedStats && navStorageText) {
+        navStorageText.textContent = `${formatBytes(cachedStats.total_size || 0)} used`;
+      }
     } else {
       navUser.classList.add('hidden');
       navGuest.classList.remove('hidden');
       uploadPanel.classList.add('hidden');
       guestPanel.classList.remove('hidden');
-      if (feedFilterTabs) feedFilterTabs.classList.add('hidden');
+      if (driveToolbar) driveToolbar.classList.add('hidden');
     }
   }
 
@@ -386,7 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       if (authMode === 'signup') {
-        // Register user
         const regRes = await fetch('/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -397,17 +421,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const errData = await regRes.json().catch(() => ({}));
           let msg = errData.detail || 'Registration failed';
           if (msg === 'REGISTER_USER_ALREADY_EXISTS') {
-            msg = 'This email is already registered! Please click "Sign In" above to log into your account.';
+            msg = 'This email is already registered! Please sign in.';
           } else if (msg === 'REGISTER_INVALID_PASSWORD') {
             msg = 'Password must be at least 6 characters.';
           }
           throw new Error(msg);
         }
-
         showToast('Account created successfully! Signing in...', 'success');
       }
 
-      // Login to obtain JWT
       const loginParams = new URLSearchParams();
       loginParams.append('username', email);
       loginParams.append('password', password);
@@ -422,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const errData = await loginRes.json().catch(() => ({}));
         let msg = errData.detail || 'Invalid email or password';
         if (msg === 'LOGIN_BAD_CREDENTIALS') {
-          msg = 'Incorrect email or password. If you haven\'t created an account yet, click "Create Account" above!';
+          msg = 'Incorrect email or password.';
         }
         throw new Error(msg);
       }
@@ -431,7 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
       token = tokenData.access_token;
       localStorage.setItem('token', token);
 
-      // Fetch user profile
       const userRes = await fetch('/users/me', { headers: getAuthHeaders() });
       if (userRes.ok) {
         user = await userRes.json();
@@ -440,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       closeAuthModal();
       updateAuthUI();
-      showToast(`Welcome, ${user ? user.email : 'User'}!`, 'success');
+      showToast(`Welcome to ShareCare, ${user ? user.email : 'User'}!`, 'success');
       loadFeed();
     } catch (err) {
       authError.textContent = err.message || 'Authentication error';
@@ -460,8 +481,10 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     cachedPosts = [];
+    cachedStats = null;
     if (feedCards) feedCards.innerHTML = '';
     if (postsCounter) postsCounter.textContent = '0 files';
+    if (navStorageText) navStorageText.textContent = '0 MB used';
     updateAuthUI();
     if (emptyFeed) {
       emptyFeed.classList.remove('hidden');
@@ -471,11 +494,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (p) p.textContent = 'Sign in with your Google account to view and upload files.';
     }
     if (showNotification) {
-      showToast('You have been signed out.', 'success');
+      showToast('You have been signed out from ShareCare.', 'success');
     }
   }
 
-  // --- Dropzone & Media Selection ---
+  // --- Dropzone & File Selection ---
   ['dragenter', 'dragover'].forEach((eventName) => {
     dropzone.addEventListener(eventName, (e) => {
       e.preventDefault();
@@ -527,69 +550,13 @@ document.addEventListener('DOMContentLoaded', () => {
       video.src = URL.createObjectURL(file);
       previewMediaContainer.appendChild(video);
     } else if (file.type.startsWith('audio/')) {
-      previewMediaContainer.innerHTML = '<span style="font-size:2.5rem;">🎵</span>';
+      previewMediaContainer.innerHTML = '<span style="font-size:2.8rem;">🎵</span>';
     } else {
-      previewMediaContainer.innerHTML = '<span style="font-size:2.5rem;">📄</span>';
+      previewMediaContainer.innerHTML = '<span style="font-size:2.8rem;">📄</span>';
     }
 
     dropzoneIdle.classList.add('hidden');
     previewBox.classList.remove('hidden');
-  }
-
-  function compressImageIfLarge(file) {
-    return new Promise((resolve) => {
-      // Only compress images larger than 1.8 MB
-      if (!file.type.startsWith('image/') || file.size <= 1.8 * 1024 * 1024) {
-        resolve(file);
-        return;
-      }
-
-      const img = new Image();
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        img.onload = () => {
-          const maxDim = 1920;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => {
-              if (blob && blob.size < file.size) {
-                const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
-                  type: 'image/jpeg',
-                  lastModified: Date.now(),
-                });
-                resolve(compressedFile);
-              } else {
-                resolve(file);
-              }
-            },
-            'image/jpeg',
-            0.82
-          );
-        };
-        img.onerror = () => resolve(file);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(file);
-      reader.readAsDataURL(file);
-    });
   }
 
   function clearSelectedFile() {
@@ -600,12 +567,12 @@ document.addEventListener('DOMContentLoaded', () => {
     dropzoneIdle.classList.remove('hidden');
   }
 
-  // --- Upload Post Submission ---
+  // --- High-Capacity Direct Upload Form Submission ---
   uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (!selectedFile) {
-      showToast('Please select a file to upload.', 'error');
+      showToast('Please choose a file to upload.', 'error');
       return;
     }
 
@@ -614,61 +581,165 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Limit check: up to 100 MB supported!
+    if (selectedFile.size > 105 * 1024 * 1024) {
+      showToast('File exceeds 100 MB. Please choose a file up to 100 MB.', 'error');
+      return;
+    }
+
     submitPostBtn.disabled = true;
     uploadSpinner.classList.remove('hidden');
     uploadBtnText.textContent = 'Preparing upload...';
+    uploadProgressContainer.classList.remove('hidden');
+    progressBarFill.style.width = '0%';
+    progressPercent.textContent = '0%';
+    progressStatus.textContent = 'Connecting to cloud...';
+    progressBytes.textContent = `0 MB / ${formatBytes(selectedFile.size)}`;
+
+    const caption = document.getElementById('post-caption').value.trim();
 
     try {
-      let fileToUpload = selectedFile;
-      if (selectedFile.type.startsWith('image/')) {
-        uploadBtnText.textContent = 'Optimizing image...';
-        fileToUpload = await compressImageIfLarge(selectedFile);
-      }
-
-      if (fileToUpload.size > 4.5 * 1024 * 1024) {
-        throw new Error('File exceeds the 4.5 MB serverless limit. Please choose a smaller file.');
-      }
-
-      const caption = document.getElementById('post-caption').value.trim();
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-      formData.append('caption', caption);
-
-      uploadBtnText.textContent = 'Uploading to cloud...';
-
-      const res = await fetch('/upload', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: formData,
-      });
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          handleLogout();
-          openAuthModal('login');
-          throw new Error('Session expired. Please sign in again.');
+      // Step 1: Request client-side upload authorization credentials
+      let authData = null;
+      try {
+        const authRes = await fetch('/upload/auth', { headers: getAuthHeaders() });
+        if (authRes.ok) {
+          authData = await authRes.json();
         }
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Upload failed (Status ${res.status})`);
+      } catch (authErr) {
+        console.warn('Could not retrieve upload auth credentials, trying direct fallback:', authErr);
       }
 
-      showToast('Post published successfully!', 'success');
+      if (authData && authData.signature && authData.public_key) {
+        // Step 2A: Direct-to-CDN Streaming Upload (Bypasses Vercel 4.5 MB Limit)
+        progressStatus.textContent = 'Uploading directly to CDN...';
+        const ikResult = await uploadDirectToImageKit(selectedFile, authData);
+
+        // Step 3: Register uploaded file metadata in user's database
+        progressStatus.textContent = 'Saving file to your drive...';
+        const recordRes = await fetch('/files/record', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+          },
+          body: JSON.stringify({
+            url: ikResult.url,
+            file_name: ikResult.name || selectedFile.name,
+            file_type: ikResult.fileType || detectFileType(selectedFile),
+            imagekit_file_id: ikResult.fileId || null,
+            file_size: ikResult.size || selectedFile.size,
+            caption: caption,
+          }),
+        });
+
+        if (!recordRes.ok) {
+          throw new Error('Failed to save file record in database.');
+        }
+      } else {
+        // Step 2B: Fallback to server endpoint (for smaller files / offline dev)
+        progressStatus.textContent = 'Uploading via server proxy...';
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('caption', caption);
+
+        const res = await fetch('/upload', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Upload failed');
+        }
+      }
+
+      progressBarFill.style.width = '100%';
+      progressPercent.textContent = '100%';
+      progressStatus.textContent = 'Upload complete!';
+      showToast('File uploaded successfully to your ShareCare drive!', 'success');
+
       uploadForm.reset();
       clearSelectedFile();
 
-      // Refresh feed
+      // Refresh drive files
       await loadFeed();
     } catch (err) {
       console.error('Upload Error:', err);
       showToast(err.message || 'Upload failed', 'error');
     } finally {
-      submitPostBtn.disabled = false;
-      uploadSpinner.classList.add('hidden');
-      uploadBtnText.textContent = 'Upload File';
+      setTimeout(() => {
+        uploadProgressContainer.classList.add('hidden');
+        submitPostBtn.disabled = false;
+        uploadSpinner.classList.add('hidden');
+        uploadBtnText.textContent = 'Upload to ShareCare';
+      }, 1000);
     }
   });
 
-  // --- Drive Files Loading ---
+  // Direct XMLHttpRequest to ImageKit CDN with real-time percentage
+  function uploadDirectToImageKit(file, auth) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+
+      formData.append('file', file);
+      formData.append('fileName', file.name || 'upload');
+      formData.append('publicKey', auth.public_key);
+      formData.append('signature', auth.signature);
+      formData.append('expire', auth.expire);
+      formData.append('token', auth.token);
+      formData.append('folder', auth.folder);
+      if (auth.tags && auth.tags.length > 0) {
+        formData.append('tags', auth.tags.join(','));
+      }
+      formData.append('useUniqueFileName', 'true');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+          progressBarFill.style.width = `${percent}%`;
+          progressPercent.textContent = `${percent}%`;
+          progressStatus.textContent = `Streaming ${formatBytes(e.loaded)} / ${formatBytes(e.total)}...`;
+          progressBytes.textContent = `${formatBytes(e.loaded)} of ${formatBytes(e.total)}`;
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data);
+          } catch (e) {
+            reject(new Error('Invalid response from storage CDN.'));
+          }
+        } else {
+          try {
+            const errData = JSON.parse(xhr.responseText);
+            reject(new Error(errData.message || 'Direct CDN upload error.'));
+          } catch (e) {
+            reject(new Error(`Storage error (Status ${xhr.status})`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error connecting to storage CDN.'));
+      xhr.open('POST', 'https://upload.imagekit.io/api/v1/files/upload', true);
+      xhr.send(formData);
+    });
+  }
+
+  function detectFileType(file) {
+    if (!file) return 'document';
+    const type = file.type || '';
+    if (type.startsWith('image/')) return 'image';
+    if (type.startsWith('video/')) return 'video';
+    if (type.startsWith('audio/')) return 'audio';
+    return 'document';
+  }
+
+  // --- Drive Files Loading, Search & Category Filters ---
   refreshFeedBtn.addEventListener('click', () => {
     const icon = refreshFeedBtn.querySelector('.refresh-icon');
     if (icon) icon.style.transform = 'rotate(360deg)';
@@ -679,14 +750,81 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Search input listeners
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.trim().toLowerCase();
+      if (searchClearBtn) {
+        searchClearBtn.classList.toggle('hidden', searchQuery.length === 0);
+      }
+      applyFilterAndRender();
+    });
+  }
+
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      searchClearBtn.classList.add('hidden');
+      applyFilterAndRender();
+      searchInput.focus();
+    });
+  }
+
+  // Category filter pills
+  catPills.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      catPills.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCategory = btn.dataset.category || 'all';
+      applyFilterAndRender();
+    });
+  });
+
+  // Sort selector
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      sortMode = e.target.value;
+      applyFilterAndRender();
+    });
+  }
+
+  // View mode switcher (Grid vs List)
+  if (viewGridBtn && viewListBtn) {
+    viewGridBtn.addEventListener('click', () => applyViewMode('grid'));
+    viewListBtn.addEventListener('click', () => applyViewMode('list'));
+  }
+
+  function applyViewMode(mode) {
+    viewMode = mode;
+    localStorage.setItem('sharecare_view_mode', mode);
+
+    if (mode === 'grid') {
+      if (viewGridBtn) viewGridBtn.classList.add('active');
+      if (viewListBtn) viewListBtn.classList.remove('active');
+      if (feedCards) {
+        feedCards.classList.add('grid-view');
+        feedCards.classList.remove('list-view');
+      }
+    } else {
+      if (viewListBtn) viewListBtn.classList.add('active');
+      if (viewGridBtn) viewGridBtn.classList.remove('active');
+      if (feedCards) {
+        feedCards.classList.add('list-view');
+        feedCards.classList.remove('grid-view');
+      }
+    }
+    applyFilterAndRender();
+  }
+
   async function loadFeed() {
     feedLoader.classList.remove('hidden');
     emptyFeed.classList.add('hidden');
 
     try {
       if (!token) {
-        // Guest user: not authenticated
         cachedPosts = [];
+        cachedStats = null;
         feedLoader.classList.add('hidden');
         renderPosts([]);
         return;
@@ -705,6 +843,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const data = await res.json();
       cachedPosts = data.files || data.posts || [];
+      cachedStats = data.stats || null;
+
+      // Update storage pill in navbar
+      if (cachedStats && navStorageText) {
+        navStorageText.textContent = `${formatBytes(cachedStats.total_size || 0)} used`;
+      }
+
       applyFilterAndRender();
     } catch (err) {
       console.error('Feed error:', err);
@@ -715,8 +860,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function applyFilterAndRender() {
-    postsCounter.textContent = `${cachedPosts.length} file${cachedPosts.length === 1 ? '' : 's'}`;
-    renderPosts(cachedPosts);
+    let filtered = [...cachedPosts];
+
+    // 1. Filter by category
+    if (activeCategory !== 'all') {
+      filtered = filtered.filter((p) => p.file_type === activeCategory);
+    }
+
+    // 2. Filter by search query
+    if (searchQuery) {
+      filtered = filtered.filter((p) => {
+        const nameMatch = (p.file_name || '').toLowerCase().includes(searchQuery);
+        const captionMatch = (p.caption || '').toLowerCase().includes(searchQuery);
+        return nameMatch || captionMatch;
+      });
+    }
+
+    // 3. Sort files
+    if (sortMode === 'newest') {
+      filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    } else if (sortMode === 'oldest') {
+      filtered.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    } else if (sortMode === 'name_asc') {
+      filtered.sort((a, b) => (a.file_name || '').localeCompare(b.file_name || ''));
+    } else if (sortMode === 'size_desc') {
+      filtered.sort((a, b) => (b.file_size || 0) - (a.file_size || 0));
+    }
+
+    // Update counter
+    postsCounter.textContent = `${filtered.length} file${filtered.length === 1 ? '' : 's'}`;
+
+    renderPosts(filtered);
   }
 
   function renderPosts(posts) {
@@ -732,19 +906,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (posts.length === 0) {
       emptyFeed.classList.remove('hidden');
-      emptyFeed.querySelector('h3').textContent = 'No files uploaded yet';
-      emptyFeed.querySelector('p').textContent = 'Upload your first photo, video, PDF, or document using the upload panel on the left.';
+      if (searchQuery || activeCategory !== 'all') {
+        emptyFeed.querySelector('h3').textContent = 'No matching files found';
+        emptyFeed.querySelector('p').textContent = 'Try adjusting your search terms or category filters.';
+      } else {
+        emptyFeed.querySelector('h3').textContent = 'No files uploaded yet';
+        emptyFeed.querySelector('p').textContent = 'Upload photos, videos, PDFs, or documents using the panel on the left.';
+      }
       return;
     }
 
     emptyFeed.classList.add('hidden');
 
+    if (viewMode === 'grid') {
+      renderGridView(posts);
+    } else {
+      renderListView(posts);
+    }
+  }
+
+  // --- Grid View Rendering ---
+  function renderGridView(posts) {
     posts.forEach((post) => {
       const card = document.createElement('article');
       card.className = 'post-card';
       card.id = `post-${post.id}`;
 
-      const authorInitial = (post.email ? post.email[0] : 'U').toUpperCase();
       const timeAgo = formatTimeAgo(post.created_at);
       const isVideo = post.file_type === 'video';
       const isAudio = post.file_type === 'audio';
@@ -759,80 +946,190 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (isAudio) {
         badgeLabel = '🎵 Audio';
         mediaHtml = `
-          <div class="audio-post-box" style="padding:2.5rem 1.5rem;text-align:center;background:rgba(255,255,255,0.03);">
-            <div style="font-size:2.5rem;margin-bottom:0.75rem;">🎵</div>
-            <audio controls style="width:100%;max-width:320px;" src="${escapeHtml(post.url)}"></audio>
+          <div class="audio-post-box">
+            <div class="audio-icon">🎵</div>
+            <audio controls style="width:100%;max-width:280px;" src="${escapeHtml(post.url)}"></audio>
           </div>
         `;
       } else if (isDocument) {
-        badgeLabel = '📄 Document';
+        badgeLabel = '📄 Doc';
         mediaHtml = `
-          <div class="doc-post-box" style="padding:2.5rem 1.5rem;text-align:center;background:rgba(255,255,255,0.03);">
-            <div style="font-size:3rem;margin-bottom:0.6rem;">📄</div>
-            <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary);margin-bottom:0.85rem;word-break:break-all;">
-              ${escapeHtml(post.file_name || 'Document File')}
-            </div>
-            <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="display:inline-flex;padding:0.45rem 1.15rem;font-size:0.85rem;border-radius:2rem;">
-              📥 View / Download
-            </a>
+          <div class="doc-post-box">
+            <div class="doc-icon">📄</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Document File</div>
           </div>
         `;
       } else {
         badgeLabel = '📷 Photo';
-        mediaHtml = `<img class="feed-img" loading="lazy" src="${escapeHtml(post.url)}" alt="${escapeHtml(post.caption || 'Photo')}" onerror="this.onerror=null;this.src='https://via.placeholder.com/800x600/131b2e/64748b?text=Media+Preview';" />`;
+        mediaHtml = `<img class="feed-img" loading="lazy" src="${escapeHtml(post.url)}" alt="${escapeHtml(post.caption || post.file_name)}" />`;
       }
 
       card.innerHTML = `
-        <header class="post-header">
-          <div class="post-author-box">
-            <div class="post-author-avatar">${escapeHtml(authorInitial)}</div>
-            <div class="post-author-info">
-              <span class="post-author-email">${escapeHtml(post.email)}</span>
-              <span class="post-time">${escapeHtml(timeAgo)}</span>
-            </div>
-          </div>
-          <div class="post-header-actions">
-            ${post.is_owner ? '<span class="owner-pill">You</span>' : ''}
-            ${
-              post.is_owner
-                ? `<button class="btn-delete-post" title="Delete File" data-id="${escapeHtml(post.id)}">🗑️</button>`
-                : ''
-            }
-          </div>
-        </header>
-
-        <div class="post-media-wrap">
+        <div class="post-media-wrap" data-file-id="${escapeHtml(post.id)}">
           ${mediaHtml}
         </div>
 
-        <div class="post-content-box">
-          ${post.caption ? `<p class="post-caption">${escapeHtml(post.caption)}</p>` : ''}
-          <div class="post-meta-footer">
-            <span class="media-badge">
-              ${badgeLabel} &bull; ${escapeHtml(truncateString(post.file_name, 22))}
-            </span>
-            <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="ik-cdn-link">
-              View File &rarr;
+        <div class="post-body">
+          <div class="post-title-row">
+            <span class="post-filename" title="${escapeHtml(post.file_name)}">${escapeHtml(post.file_name || 'File')}</span>
+            <span class="media-tag">${badgeLabel}</span>
+          </div>
+
+          ${post.caption ? `<p class="post-caption-text">${escapeHtml(post.caption)}</p>` : ''}
+
+          <div class="post-meta-row">
+            <span>${escapeHtml(formatBytes(post.file_size || 0))}</span>
+            <span>${escapeHtml(timeAgo)}</span>
+          </div>
+
+          <div class="post-actions-row">
+            <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="btn-open-file" title="Download or open file">
+              📥 Open / Download
             </a>
+            <button type="button" class="btn-delete-post" title="Delete File" data-id="${escapeHtml(post.id)}">
+              🗑️
+            </button>
           </div>
         </div>
       `;
 
+      // Open Lightbox on media click
+      const mediaWrap = card.querySelector('.post-media-wrap');
+      if (mediaWrap && !isAudio && !isVideo) {
+        mediaWrap.addEventListener('click', () => openLightbox(post));
+      }
+
       // Attach delete event
-      if (post.is_owner) {
-        const deleteBtn = card.querySelector('.btn-delete-post');
-        if (deleteBtn) {
-          deleteBtn.addEventListener('click', () => handleDeletePost(post.id));
-        }
+      const deleteBtn = card.querySelector('.btn-delete-post');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleDeletePost(post.id);
+        });
       }
 
       feedCards.appendChild(card);
     });
   }
 
-  // --- Delete Post Action ---
+  // --- List View Rendering ---
+  function renderListView(posts) {
+    posts.forEach((post) => {
+      const row = document.createElement('div');
+      row.className = 'list-item-row';
+      row.id = `post-${post.id}`;
+
+      const timeAgo = formatTimeAgo(post.created_at);
+      const isImage = post.file_type === 'image';
+      const isVideo = post.file_type === 'video';
+      const isAudio = post.file_type === 'audio';
+
+      let iconHtml = '📄';
+      if (isImage) {
+        iconHtml = `<img src="${escapeHtml(post.url)}" alt="${escapeHtml(post.file_name)}" />`;
+      } else if (isVideo) {
+        iconHtml = '🎬';
+      } else if (isAudio) {
+        iconHtml = '🎵';
+      }
+
+      row.innerHTML = `
+        <div class="list-thumb">${iconHtml}</div>
+        <div class="list-name-col">
+          <div class="list-filename" title="${escapeHtml(post.file_name)}">${escapeHtml(post.file_name || 'File')}</div>
+          ${post.caption ? `<div class="list-caption">${escapeHtml(post.caption)}</div>` : ''}
+        </div>
+        <div class="list-type-col">
+          <span class="media-tag">${post.file_type.toUpperCase()}</span>
+        </div>
+        <div class="list-size-col">${escapeHtml(formatBytes(post.file_size || 0))}</div>
+        <div class="list-date-col">${escapeHtml(timeAgo)}</div>
+        <div class="list-actions-col">
+          <a href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary-sm" title="Download">
+            📥
+          </a>
+          <button type="button" class="btn-delete-post" title="Delete File" data-id="${escapeHtml(post.id)}">
+            🗑️
+          </button>
+        </div>
+      `;
+
+      // Open Lightbox on click for images and videos
+      if (isImage || isVideo) {
+        const thumb = row.querySelector('.list-thumb');
+        if (thumb) {
+          thumb.style.cursor = 'pointer';
+          thumb.addEventListener('click', () => openLightbox(post));
+        }
+      }
+
+      // Attach delete event
+      const deleteBtn = row.querySelector('.btn-delete-post');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleDeletePost(post.id);
+        });
+      }
+
+      feedCards.appendChild(row);
+    });
+  }
+
+  // --- Lightbox Media Viewer Modal ---
+  function openLightbox(post) {
+    if (!lightboxModal) return;
+    lightboxContent.innerHTML = '';
+
+    if (post.file_type === 'image') {
+      const img = document.createElement('img');
+      img.src = post.url;
+      img.alt = post.file_name || 'Preview';
+      lightboxContent.appendChild(img);
+    } else if (post.file_type === 'video') {
+      const video = document.createElement('video');
+      video.src = post.url;
+      video.controls = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      lightboxContent.appendChild(video);
+    } else {
+      lightboxContent.innerHTML = `
+        <div style="text-align:center;padding:2rem;">
+          <div style="font-size:4rem;margin-bottom:1rem;">📄</div>
+          <div style="font-weight:600;font-size:1.1rem;color:#fff;">${escapeHtml(post.file_name)}</div>
+        </div>
+      `;
+    }
+
+    lightboxTitle.textContent = post.file_name || 'File';
+    lightboxSub.textContent = `${post.file_type.toUpperCase()} • ${formatBytes(post.file_size || 0)} • ${formatTimeAgo(post.created_at)}`;
+    lightboxDownloadLink.href = post.url;
+    lightboxDownloadLink.download = post.file_name || 'file';
+
+    lightboxModal.classList.remove('hidden');
+  }
+
+  function closeLightbox() {
+    if (lightboxModal) {
+      lightboxModal.classList.add('hidden');
+      lightboxContent.innerHTML = '';
+    }
+  }
+
+  if (lightboxCloseBtn) {
+    lightboxCloseBtn.addEventListener('click', closeLightbox);
+  }
+
+  if (lightboxModal) {
+    lightboxModal.addEventListener('click', (e) => {
+      if (e.target === lightboxModal) closeLightbox();
+    });
+  }
+
+  // --- Delete File Action ---
   async function handleDeletePost(postId) {
-    if (!confirm('Are you sure you want to delete this file? This cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this file from your drive? This cannot be undone.')) {
       return;
     }
 
@@ -849,21 +1146,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
       showToast('File deleted successfully', 'success');
 
-      // Remove from cachedPosts & DOM
+      // Remove from cachedPosts & refresh
       cachedPosts = cachedPosts.filter((p) => p.id !== postId);
       applyFilterAndRender();
+
+      // Refresh storage metrics in background
+      fetch('/files', { headers: getAuthHeaders() })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.stats && navStorageText) {
+            navStorageText.textContent = `${formatBytes(data.stats.total_size || 0)} used`;
+          }
+        })
+        .catch(() => {});
     } catch (err) {
       console.error('Delete Error:', err);
-      showToast(err.message || 'Failed to delete post', 'error');
+      showToast(err.message || 'Failed to delete file', 'error');
     }
   }
 
   // --- Helper Functions ---
   function formatBytes(bytes, decimals = 1) {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   }
@@ -885,14 +1192,9 @@ document.addEventListener('DOMContentLoaded', () => {
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
-  function truncateString(str, num) {
-    if (!str) return '';
-    return str.length > num ? str.slice(0, num) + '...' : str;
-  }
-
   function escapeHtml(str) {
     if (!str) return '';
-    return str
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')

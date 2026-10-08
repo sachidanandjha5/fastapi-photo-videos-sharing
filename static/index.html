@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ShareCare - Secure Cloud Media & File Drive</title>
+  <title>ShareCare - Secure Cloud Media & Document Drive</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
         <div class="logo-badge">⚡</div>
         <div>
           <h1 class="brand-title">ShareCare</h1>
-          <p class="brand-sub">Secure photos, videos, PDFs & documents</p>
+          <p class="brand-sub">Private Cloud Media & Document Drive</p>
         </div>
       </div>
 
@@ -32,11 +32,19 @@
 
         <!-- Logged In State -->
         <div id="nav-user" class="nav-user hidden">
+          <div id="nav-storage-pill" class="storage-pill" title="Total cloud storage used by your account">
+            <span class="storage-icon">☁️</span>
+            <span id="nav-storage-text">0 MB used</span>
+          </div>
+
           <div class="user-pill">
             <div class="avatar-circle" id="user-avatar">U</div>
             <span id="user-email-display" class="user-email">user@example.com</span>
           </div>
-          <button id="logout-btn" class="btn btn-outline-sm btn-logout" title="Sign Out">Sign Out</button>
+
+          <button id="logout-btn" class="btn btn-outline-sm btn-logout" title="Sign Out of ShareCare">
+            <span>Sign Out</span>
+          </button>
         </div>
 
         <a href="/docs" target="_blank" class="docs-link" title="Open API Documentation">API Docs &rarr;</a>
@@ -51,24 +59,29 @@
       <!-- Upload Card (Visible when Logged In) -->
       <div id="upload-panel" class="card upload-card hidden">
         <div class="card-header">
-          <div class="header-icon">✨</div>
+          <div class="header-icon">🚀</div>
           <div>
-            <h2>Upload File</h2>
-            <p class="subtitle">Photos, Videos, PDFs & Documents</p>
+            <h2>Upload Files</h2>
+            <p class="subtitle">Direct-to-cloud upload up to 100 MB+</p>
           </div>
         </div>
 
         <form id="upload-form" class="upload-form">
           <!-- Dropzone -->
           <div class="form-group">
-            <label class="form-label">Photo, Video, PDF or Document</label>
             <div id="dropzone" class="dropzone">
               <input type="file" id="file-input" name="file" accept="*/*" required />
               
               <div id="dropzone-idle" class="dropzone-idle">
                 <div class="upload-cloud-icon">☁️</div>
-                <p class="dropzone-text"><strong>Choose file</strong> or drag & drop here</p>
-                <p class="dropzone-sub">Photos, Videos, PDFs & Documents</p>
+                <p class="dropzone-text"><strong>Click to browse</strong> or drag files here</p>
+                <div class="dropzone-badges">
+                  <span class="file-badge">📷 Photos</span>
+                  <span class="file-badge">🎬 Videos</span>
+                  <span class="file-badge">📄 PDFs & Docs</span>
+                  <span class="file-badge">🎵 Audio</span>
+                </div>
+                <p class="dropzone-limit">Supports large files up to 100 MB</p>
               </div>
 
               <!-- Media Preview -->
@@ -83,21 +96,33 @@
             </div>
           </div>
 
+          <!-- Upload Progress Bar (Shown during upload) -->
+          <div id="upload-progress-container" class="upload-progress-container hidden">
+            <div class="progress-meta">
+              <span id="progress-status" class="progress-status">Uploading to cloud...</span>
+              <span id="progress-percent" class="progress-percent">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div id="progress-bytes" class="progress-bytes">0 MB / 0 MB</div>
+          </div>
+
           <!-- Caption Input -->
           <div class="form-group">
-            <label for="post-caption" class="form-label">Notes / Caption (optional)</label>
+            <label for="post-caption" class="form-label">Note / Caption (optional)</label>
             <textarea 
               id="post-caption" 
               name="caption" 
-              rows="3" 
-              placeholder="Add an optional note or caption..."
+              rows="2" 
+              placeholder="Add an optional note or description..."
             ></textarea>
           </div>
 
           <!-- Submit Button -->
           <button type="submit" id="submit-post-btn" class="btn btn-primary btn-block">
             <span id="upload-spinner" class="spinner hidden"></span>
-            <span id="upload-btn-text">Upload File</span>
+            <span id="upload-btn-text">Upload to ShareCare</span>
           </button>
         </form>
       </div>
@@ -105,18 +130,18 @@
       <!-- Guest Prompt Card (Visible when Logged Out) -->
       <div id="guest-panel" class="card guest-card">
         <div class="guest-banner-icon">🔐</div>
-        <h2>Join ShareCare</h2>
-        <p class="guest-desc">Sign in with your Google account to store, organize, and access your private files anywhere.</p>
+        <h2>Welcome to ShareCare</h2>
+        <p class="guest-desc">Your private, account-isolated cloud media and document vault. Sign in with Google to securely store, stream, and access your files from any device.</p>
         <div class="guest-actions">
-          <button id="guest-login-btn" class="btn btn-primary btn-block">Sign In to Your Account</button>
-          <button id="guest-signup-btn" class="btn btn-secondary btn-block">Create New Account</button>
+          <button id="guest-login-btn" class="btn btn-primary btn-block">Sign In with Google</button>
+          <button id="guest-signup-btn" class="btn btn-secondary btn-block">Create Free Account</button>
         </div>
       </div>
     </aside>
 
     <!-- Right Column: My Files Drive -->
     <section class="feed-col">
-      <!-- Drive Header -->
+      <!-- Drive Header & Search Toolbar -->
       <div class="feed-header-bar">
         <div class="feed-title-wrap">
           <h2 id="feed-title">My Files</h2>
@@ -124,14 +149,57 @@
         </div>
 
         <div class="feed-actions">
-          <button id="refresh-feed-btn" class="btn btn-secondary-sm" title="Refresh Files">
+          <!-- View Switcher -->
+          <div class="view-switcher" role="group" aria-label="Layout view">
+            <button type="button" id="view-grid-btn" class="view-btn active" title="Grid View">
+              <span>▦</span> Grid
+            </button>
+            <button type="button" id="view-list-btn" class="view-btn" title="List View">
+              <span>☰</span> List
+            </button>
+          </div>
+
+          <button id="refresh-feed-btn" class="btn btn-secondary-sm" title="Refresh files list">
             <span class="refresh-icon">🔄</span> Refresh
           </button>
         </div>
       </div>
 
-      <!-- User Files Container -->
-      <div id="feed-cards" class="feed-cards">
+      <!-- Search & Category Filters Bar -->
+      <div id="drive-toolbar" class="drive-toolbar hidden">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            id="search-input" 
+            class="search-input" 
+            placeholder="Search files by name or caption..." 
+            autocomplete="off"
+          />
+          <button type="button" id="search-clear-btn" class="search-clear-btn hidden" title="Clear search">&times;</button>
+        </div>
+
+        <div class="category-filters">
+          <button class="cat-pill active" data-category="all">All</button>
+          <button class="cat-pill" data-category="image">📷 Photos</button>
+          <button class="cat-pill" data-category="video">🎬 Videos</button>
+          <button class="cat-pill" data-category="document">📄 Docs & PDFs</button>
+          <button class="cat-pill" data-category="audio">🎵 Audio</button>
+        </div>
+
+        <div class="sort-wrap">
+          <label for="sort-select" class="sort-label">Sort:</label>
+          <select id="sort-select" class="sort-select">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="name_asc">Name (A-Z)</option>
+            <option value="size_desc">Size (Largest)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- User Files Container (Grid or List mode) -->
+      <div id="feed-cards" class="feed-cards grid-view">
         <!-- Rendered dynamically via JavaScript -->
       </div>
 
@@ -139,7 +207,7 @@
       <div id="empty-feed" class="empty-feed hidden">
         <div class="empty-art">📂</div>
         <h3 id="empty-feed-title">No files uploaded yet</h3>
-        <p id="empty-feed-desc">Upload your first photo, video, PDF, or document using the panel on the left.</p>
+        <p id="empty-feed-desc">Upload photos, large videos, PDFs, or documents using the panel on the left.</p>
       </div>
 
       <!-- Loading State -->
@@ -236,7 +304,7 @@
         <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">to continue directly to ShareCare</p>
       </div>
 
-      <!-- Remembered Device Account (Only shown if this specific device previously logged in!) -->
+      <!-- Remembered Device Account -->
       <div id="google-remembered-section" class="hidden" style="margin-top:1.25rem;">
         <button type="button" id="google-remembered-btn" class="google-account-btn">
           <div id="google-remembered-avatar" class="google-avatar-circle" style="background:#4285f4;color:white;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">U</div>
@@ -264,6 +332,27 @@
           Continue with Google
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- Fullscreen Media Lightbox Viewer Modal -->
+  <div id="lightbox-modal" class="modal-backdrop hidden">
+    <div class="lightbox-dialog">
+      <button type="button" id="lightbox-close-btn" class="lightbox-close" title="Close preview">&times;</button>
+      <div id="lightbox-content" class="lightbox-content">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="lightbox-footer">
+        <div class="lightbox-meta">
+          <span id="lightbox-title" class="lightbox-title">Filename</span>
+          <span id="lightbox-sub" class="lightbox-sub">Details</span>
+        </div>
+        <div class="lightbox-actions">
+          <a id="lightbox-download-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary-sm">
+            📥 Download / Open
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 
